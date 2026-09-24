@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
-import cys
+from plugins.cys import cys
 
 
 class CysTests(unittest.TestCase):
@@ -95,6 +95,23 @@ class CysTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(cys.pending_for_stop(cys.record("claude", "session", self.state)), [str(self.created)])
+
+    @unittest.skipUnless(os.name == "nt", "CMD quoting applies on Windows")
+    def test_codex_cmd_command_handles_spaces_and_apostrophes(self):
+        script_dir = self.root / "O'Brien with spaces"
+        script_dir.mkdir()
+        script = script_dir / "cys.py"
+        shutil.copyfile(cys.__file__, script)
+        with patch.object(cys, "__file__", str(script)):
+            command = cys.command_for("codex", "session", "add")
+        cmd_command = command.split("CMD: `", 1)[1].split("`", 1)[0]
+        path_arg = '"' + str(self.created).replace("\\", "/") + '"'
+        completed = subprocess.run(
+            cmd_command.replace("PATH", path_arg),
+            shell=True, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(cys.pending_for_stop(cys.record("codex", "session", self.state)), [str(self.created).replace("\\", "/")])
 
 
 if __name__ == "__main__":

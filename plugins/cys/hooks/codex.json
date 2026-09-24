@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/cys.py\" hook codex", "commandWindows": "python3 \"%PLUGIN_ROOT%\\cys.py\" hook codex"}]}],
+    "SubagentStart": [{"hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/cys.py\" hook codex", "commandWindows": "python3 \"%PLUGIN_ROOT%\\cys.py\" hook codex"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/cys.py\" hook codex", "commandWindows": "python3 \"%PLUGIN_ROOT%\\cys.py\" hook codex"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/cys.py\" hook codex", "commandWindows": "python3 \"%PLUGIN_ROOT%\\cys.py\" hook codex"}]}]
+  }
+}

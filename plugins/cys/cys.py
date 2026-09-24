@@ -78,9 +78,8 @@ def command_for(host, session, action):
     if os.name == "nt":
         args = [value.replace("\\", "/") for value in args]
         powershell = "& " + " ".join("'" + value.replace("'", "''") + "'" for value in args)
-        if host == "claude":
-            return f"PowerShell: `{powershell} PATH`; Bash: `{shlex.join(args)} PATH`"
-        return f"`{powershell} PATH`"
+        cmd = " ".join('"' + value + '"' for value in args)
+        return f"PowerShell: `{powershell} PATH`; CMD: `{cmd} PATH`; Bash: `{shlex.join(args)} PATH`"
     return f"`{shlex.join(args)} PATH`"
 
 

@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/cys.py", "hook", "claude"]}]}],
+    "SubagentStart": [{"hooks": [{"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/cys.py", "hook", "claude"]}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/cys.py", "hook", "claude"]}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3", "args": ["${CLAUDE_PLUGIN_ROOT}/cys.py", "hook", "claude"]}]}]
+  }
+}

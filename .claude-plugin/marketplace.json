@@ -1,0 +1,6 @@
+{
+  "name": "cys",
+  "description": "CYS cleanup hook for Claude Code.",
+  "owner": {"name": "koenvdheide"},
+  "plugins": [{"name": "cys", "source": "./plugins/cys"}]
+}
