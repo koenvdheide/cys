@@ -77,7 +77,11 @@ export const register: Register = on => {
       if (!key.startsWith(prefix)) continue
       const path = key.slice(prefix.length)
       await $.store.delete(key)
-      if (await $.fs.exists(path).catch(() => true)) present.push(path)
+      const isPresent = await $.fs.stat(path).then(
+        () => true,
+        () => $.fs.exists(path).catch(() => true),
+      )
+      if (isPresent) present.push(path)
     }
     if (present.length === 0) return result
     return { ...result, additionalContext: [...(result.additionalContext ?? []), cleanupText(present)] }

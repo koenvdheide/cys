@@ -14,6 +14,7 @@ type World = {
   registered: unknown[]
   refuse?: (key: string) => boolean
   existsDeny?: Set<string>
+  dangling?: Set<string>
 }
 
 // Op stubs answer { value } or { deny }; a deny rejects the module's call,
@@ -24,6 +25,12 @@ function world(on: On, init: Partial<World> = {}): World {
   on('session.cwd', async () => ({ value: w.cwd }))
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('fs.exists', async ($, e) => (w.existsDeny?.has(e.path) ? { deny: 'network location' } : { value: w.existing.has(e.path) }))
+  on('fs.stat', async ($, e) => {
+    if (w.existsDeny?.has(e.path)) return { deny: 'network location' }
+    if (w.existing.has(e.path)) return { value: { kind: 'file', size: 1, mtimeMs: 0, isLink: false } }
+    if (w.dangling?.has(e.path)) return { value: { kind: 'other', size: 0, mtimeMs: 0, isLink: true } }
+    return { deny: 'ENOENT: no such file or directory' }
+  })
   on('store.keys', async () => ({ value: [...w.store.keys()] }))
   on('store.delete', async ($, e) => {
     w.store.delete(e.key)
@@ -146,6 +153,18 @@ test('Stop lists a path whose existence check is refused and still lists the oth
   expect(result.additionalContext?.[0]).toBe(UPSTREAM)
   expect(result.additionalContext?.[1]).toContain('C:\\tmp\\here')
   expect(result.additionalContext?.[1]).toContain('Z:\\share\\x')
+  expect(w.store.size).toBe(0)
+})
+
+test('Stop lists a dangling symlink, as lexists did', async ($, on) => {
+  const w = world(on, { existing: new Set(['C:\\tmp\\here']), dangling: new Set(['C:\\tmp\\link']) })
+  await register($, ['C:\\tmp\\here', 'C:\\tmp\\link', 'C:\\tmp\\gone'])
+  const result = await stop($, 'session-a')
+  expect(result.additionalContext?.length).toBe(2)
+  expect(result.additionalContext?.[0]).toBe(UPSTREAM)
+  expect(result.additionalContext?.[1]).toContain('C:\\tmp\\here')
+  expect(result.additionalContext?.[1]).toContain('C:\\tmp\\link')
+  expect(result.additionalContext?.[1]).not.toContain('C:\\tmp\\gone')
   expect(w.store.size).toBe(0)
 })
 
