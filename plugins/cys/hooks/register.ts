@@ -19,8 +19,8 @@ const cleanupText = (paths: string[]) =>
   'preserve user, pre-existing, tracked, and needed files. Report any path you keep and why. ' +
   'Do this cleanup pass once, then finish.'
 
-// $.fs.exists rejects network locations, and a throwing Stop hook is skipped,
-// so such a path would silence the cleanup prompt for every other path.
+// $.fs.exists rejects network locations; registration refuses these spellings
+// so the agent gets a clear reason up front. Stop does not depend on it.
 const rejection = (path: string, isWindows: boolean) => {
   if (/^[\\/][\\/]/.test(path)) return 'network or device path'
   if (/^[A-Za-z]:(?![\\/])/.test(path)) return 'drive-relative path'
@@ -77,7 +77,7 @@ export const register: Register = on => {
       if (!key.startsWith(prefix)) continue
       const path = key.slice(prefix.length)
       await $.store.delete(key)
-      if (await $.fs.exists(path)) present.push(path)
+      if (await $.fs.exists(path).catch(() => true)) present.push(path)
     }
     if (present.length === 0) return result
     return { ...result, additionalContext: [...(result.additionalContext ?? []), cleanupText(present)] }

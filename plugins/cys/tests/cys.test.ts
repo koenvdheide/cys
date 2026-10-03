@@ -13,6 +13,7 @@ type World = {
   store: Map<string, unknown>
   registered: unknown[]
   refuse?: (key: string) => boolean
+  existsDeny?: Set<string>
 }
 
 // Op stubs answer { value } or { deny }; a deny rejects the module's call,
@@ -22,7 +23,7 @@ function world(on: On, init: Partial<World> = {}): World {
   on('session.id', async () => ({ value: w.session }))
   on('session.cwd', async () => ({ value: w.cwd }))
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
-  on('fs.exists', async ($, e) => ({ value: w.existing.has(e.path) }))
+  on('fs.exists', async ($, e) => (w.existsDeny?.has(e.path) ? { deny: 'network location' } : { value: w.existing.has(e.path) }))
   on('store.keys', async () => ({ value: [...w.store.keys()] }))
   on('store.delete', async ($, e) => {
     w.store.delete(e.key)
@@ -135,6 +136,17 @@ test('Stop lists existing paths of its own session once, keeps upstream context 
   expect([...w.store.keys()]).toEqual(['session-b\nC:\\tmp\\other'])
   const second = await stop($, 'session-a')
   expect(second.additionalContext).toEqual([UPSTREAM])
+})
+
+test('Stop lists a path whose existence check is refused and still lists the others', async ($, on) => {
+  const w = world(on, { existing: new Set(['C:\\tmp\\here']), existsDeny: new Set(['Z:\\share\\x']) })
+  await register($, ['C:\\tmp\\here', 'Z:\\share\\x'])
+  const result = await stop($, 'session-a')
+  expect(result.additionalContext?.length).toBe(2)
+  expect(result.additionalContext?.[0]).toBe(UPSTREAM)
+  expect(result.additionalContext?.[1]).toContain('C:\\tmp\\here')
+  expect(result.additionalContext?.[1]).toContain('Z:\\share\\x')
+  expect(w.store.size).toBe(0)
 })
 
 test('Stop returns next(e) unchanged during a continuation or background work, then lists at a regular Stop', async ($, on) => {
