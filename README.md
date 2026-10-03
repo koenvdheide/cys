@@ -16,7 +16,7 @@ claude plugin marketplace add koenvdheide/cys
 claude plugin install cys@cys
 ```
 
-The GitHub marketplace becomes available after this repository is published. For a local checkout, replace `koenvdheide/cys` with its directory path. Codex requires hook review through `/hooks`; trust the plugin hook before removing earlier CYS entries from `~/.codex/hooks.json`. When upgrading the Claude plugin from 0.1.0, remove any earlier CYS entries from `~/.claude/settings.json`: `cys.py` now serves Codex only and exits with an error for `claude`. Registrations made by 0.1.0 are not carried over, and its state files in the `cys-<user>` folder of the system temporary directory can be deleted.
+The GitHub marketplace becomes available after this repository is published. For a local checkout, replace `koenvdheide/cys` with its directory path. Codex requires hook review through `/hooks`; trust the plugin hook before removing earlier CYS entries from `~/.codex/hooks.json`. When upgrading the Claude plugin from 0.1.0, remove any earlier CYS entries from `~/.claude/settings.json`: `cys.py` now serves Codex only and exits with an error for `claude`. Registrations made by 0.1.0 are not carried over.
 
 ## Use
 
