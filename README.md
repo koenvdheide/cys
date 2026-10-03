@@ -6,7 +6,7 @@ Subagents and external models can register their paths in the same session. Path
 
 ## Install
 
-Python 3 with `sqlite3` must be available as `python3` on the hook's PATH. Install one or both plugins:
+On Claude Code, CYS runs as a mod and needs Claude Code v2.1.287 or later. On Codex, Python 3 with `sqlite3` must be available as `python3` on the hook's PATH. Install one or both plugins:
 
 ```sh
 codex plugin marketplace add koenvdheide/cys
@@ -20,16 +20,17 @@ The GitHub marketplace becomes available after this repository is published. For
 
 ## Use
 
-The SessionStart hook supplies exact `add` and `resolve` commands. On Windows, use the form for the active shell: PowerShell, CMD, or Bash. After creating a temporary file or directory, run `add` with its absolute path. After deleting it, or deciding to retain and report it, run `resolve`. At Stop, CYS prompts once for registered paths that still exist. SessionEnd removes the session record.
+On Claude Code, the agent registers each temporary path with the `mcp__cys__register` tool. Subagents that have the tool use it; the others list their paths in their final report, and the main agent registers them. Registrations are kept in the plugin's store, so a session resumed with `claude --resume` still finds them; `--fork-session` and `/branch` start with none. At a Stop that is neither a cleanup continuation nor waiting on background tasks, CYS lists the registered paths still on disk once and forgets every registration of that session. Registering a path again re-arms it.
+
+On Codex, the SessionStart hook supplies exact `add` and `resolve` commands. On Windows, use the form for the active shell: PowerShell, CMD, or Bash. After creating a temporary file or directory, run `add` with its absolute path. After deleting it, or deciding to retain and report it, run `resolve`. At Stop, CYS prompts once for registered paths that still exist, through Codex's Stop continuation response, and skips the Stop that ends that continuation. SessionEnd removes the session record. Subagents register and report their paths; the main agent handles cleanup.
 
 The agent must preserve pre-existing, user-authored, tracked, and still-needed files. If it keeps an intermediate, it reports the path and reason.
-
-Both hosts skip subsequent Stops during the cleanup continuation. Claude also waits until no background tasks are running and supplies normal hook feedback. Codex uses its supported Stop continuation response. Subagents register and report their paths; the main agent handles cleanup.
 
 ## Check
 
 ```sh
 python3 -B -m unittest discover -s . -p 'test_cys.py'
+claude plugin test plugins/cys
 claude plugin validate . --strict
 claude plugin validate plugins/cys --strict
 ```
