@@ -28,7 +28,7 @@ class CysTests(unittest.TestCase):
         state_patch = patch.object(cys, "STATE", self.state)
         state_patch.start()
         self.addCleanup(state_patch.stop)
-        self.record = cys.record("codex", "session")
+        self.record = cys.record("session")
         self.created = self.root / "created.txt"
         self.created.touch()
 
@@ -37,12 +37,12 @@ class CysTests(unittest.TestCase):
         output = StringIO()
         event = {"session_id": "session", "hook_event_name": "Stop", "stop_hook_active": True}
         with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
-            cys.hook("codex")
+            cys.hook()
         self.assertEqual(json.loads(output.getvalue()), {})
         event["stop_hook_active"] = False
         output = StringIO()
         with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
-            cys.hook("codex")
+            cys.hook()
         self.assertEqual(json.loads(output.getvalue())["decision"], "block")
         self.assertIn(str(self.created), json.loads(output.getvalue())["reason"])
         self.assertEqual(cys.pending_for_stop(self.record), [])
@@ -55,34 +55,6 @@ class CysTests(unittest.TestCase):
         cys.update(self.record, "resolve", str(self.created))
         cys.update(self.record, "add", str(self.created))
         self.assertEqual(cys.pending_for_stop(self.record), [str(self.created)])
-
-    def test_claude_stop_requests_one_cleanup_pass_as_feedback(self):
-        record = cys.record("claude", "session")
-        cys.update(record, "add", str(self.created))
-        event = {"session_id": "session", "hook_event_name": "Stop"}
-        output = StringIO()
-        with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
-            cys.hook("claude")
-        feedback = json.loads(output.getvalue())
-        self.assertNotIn("decision", feedback)
-        self.assertEqual(feedback["hookSpecificOutput"]["hookEventName"], "Stop")
-        self.assertIn(str(self.created), feedback["hookSpecificOutput"]["additionalContext"])
-        self.assertTrue(self.created.exists())
-        self.assertEqual(cys.pending_for_stop(record), [])
-
-    def test_claude_defers_cleanup_during_continuation_or_background_work(self):
-        for fields in ({"stop_hook_active": True}, {"background_tasks": [{"type": "subagent", "status": "running"}]}):
-            with self.subTest(fields=fields):
-                session = str(fields)
-                record = cys.record("claude", session)
-                cys.update(record, "add", str(self.created))
-                event = {"session_id": session, "hook_event_name": "Stop", **fields}
-                output = StringIO()
-                with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
-                    cys.hook("claude")
-                self.assertEqual(json.loads(output.getvalue()), {})
-                self.assertEqual(cys.pending_for_stop(record), [str(self.created)])
-                cys.update(record, "resolve", str(self.created))
 
     def test_stop_handles_database_before_first_table_creation(self):
         sqlite3.connect(self.record).close()
@@ -99,7 +71,7 @@ class CysTests(unittest.TestCase):
         self.assertTrue(cys.STATE.is_dir())
 
     def test_registration_command_uses_running_python_and_selected_state(self):
-        command = cys.command_for("codex", "session", "add")
+        command = cys.command_for("session", "add")
         self.assertIn(sys.executable.replace("\\", "/"), command)
         self.assertIn(str(self.state).replace("\\", "/"), command)
 
@@ -110,8 +82,19 @@ class CysTests(unittest.TestCase):
                 cys.main()
         self.assertEqual(cys.pending_for_stop(self.record), [str(self.created)])
 
+    def test_record_name_keeps_codex_prefix(self):
+        import hashlib
+        expected = hashlib.sha256(b"codex:session").hexdigest() + ".sqlite3"
+        self.assertEqual(cys.record("session").name, expected)
+
+    def test_cli_rejects_other_hosts(self):
+        with patch.object(sys, "argv", ["cys.py", "add", "claude", "session", str(self.state), str(self.created)]):
+            with self.assertRaises(SystemExit) as raised:
+                cys.main()
+        self.assertEqual(str(raised.exception), "host must be codex")
+
     @unittest.skipUnless(os.name == "nt", "PowerShell quoting applies on Windows")
-    def test_claude_powershell_command_handles_apostrophe_in_script_path(self):
+    def test_powershell_command_handles_apostrophe_in_script_path(self):
         powershell = shutil.which("pwsh") or shutil.which("powershell")
         if not powershell:
             self.skipTest("PowerShell is unavailable")
@@ -120,7 +103,7 @@ class CysTests(unittest.TestCase):
         script = script_dir / "cys.py"
         shutil.copyfile(cys.__file__, script)
         with patch.object(cys, "__file__", str(script)):
-            command = cys.command_for("claude", "session", "add")
+            command = cys.command_for("session", "add")
         powershell_command = command.split("PowerShell: `", 1)[1].split("`", 1)[0]
         path_arg = "'" + str(self.created).replace("'", "''") + "'"
         completed = subprocess.run(
@@ -128,7 +111,7 @@ class CysTests(unittest.TestCase):
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(cys.pending_for_stop(cys.record("claude", "session", self.state)), [str(self.created)])
+        self.assertEqual(cys.pending_for_stop(cys.record("session", self.state)), [str(self.created)])
 
     @unittest.skipUnless(os.name == "nt", "CMD quoting applies on Windows")
     def test_codex_cmd_command_handles_spaces_and_apostrophes(self):
@@ -137,7 +120,7 @@ class CysTests(unittest.TestCase):
         script = script_dir / "cys.py"
         shutil.copyfile(cys.__file__, script)
         with patch.object(cys, "__file__", str(script)):
-            command = cys.command_for("codex", "session", "add")
+            command = cys.command_for("session", "add")
         cmd_command = command.split("CMD: `", 1)[1].split("`", 1)[0]
         path_arg = '"' + str(self.created).replace("\\", "/") + '"'
         completed = subprocess.run(
@@ -145,7 +128,7 @@ class CysTests(unittest.TestCase):
             shell=True, capture_output=True, text=True, check=False,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(cys.pending_for_stop(cys.record("codex", "session", self.state)), [str(self.created).replace("\\", "/")])
+        self.assertEqual(cys.pending_for_stop(cys.record("session", self.state)), [str(self.created).replace("\\", "/")])
 
 
 if __name__ == "__main__":

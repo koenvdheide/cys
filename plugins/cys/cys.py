@@ -16,8 +16,8 @@ STATE = Path(tempfile.gettempdir()) / f"cys-{os.getuid() if hasattr(os, 'getuid'
 CREATE_TABLE = "CREATE TABLE IF NOT EXISTS entries (path TEXT PRIMARY KEY, prompted INTEGER NOT NULL DEFAULT 0)"
 
 
-def record(host, session, state=None):
-    key = hashlib.sha256(f"{host}:{session}".encode()).hexdigest()
+def record(session, state=None):
+    key = hashlib.sha256(f"codex:{session}".encode()).hexdigest()
     return Path(STATE if state is None else state) / f"{key}.sqlite3"
 
 
@@ -73,8 +73,8 @@ def remove_record(path):
     path.with_name(path.name + "-journal").unlink(missing_ok=True)
 
 
-def command_for(host, session, action):
-    args = [sys.executable, str(Path(__file__).resolve()), action, host, session, str(STATE)]
+def command_for(session, action):
+    args = [sys.executable, str(Path(__file__).resolve()), action, "codex", session, str(STATE)]
     if os.name == "nt":
         args = [value.replace("\\", "/") for value in args]
         powershell = "& " + " ".join("'" + value.replace("'", "''") + "'" for value in args)
@@ -83,7 +83,7 @@ def command_for(host, session, action):
     return f"`{shlex.join(args)} PATH`"
 
 
-def hook(host):
+def hook():
     event = json.load(sys.stdin)
     session = event.get("session_id")
     name = event.get("hook_event_name")
@@ -93,13 +93,13 @@ def hook(host):
     if name in ("SessionStart", "SubagentStart"):
         context = (
             "CYS: After creating a temporary file or directory, register its exact absolute "
-            f"path with {command_for(host, session, 'add')}. "
+            f"path with {command_for(session, 'add')}. "
             "Replace PATH with one shell-quoted absolute path; use that exact path when resolving. "
             "Include paths made by subagents and external model tools; share these exact commands "
             "if they register directly. Subagents should report their paths to the main agent. "
             "The main agent handles cleanup at the end of the turn, after collecting their reports. "
             "When the Stop hook requests cleanup, delete temporary files no longer needed and run "
-            f"{command_for(host, session, 'resolve')} for each removed path. "
+            f"{command_for(session, 'resolve')} for each removed path. "
             "If retaining a path, report its location and reason, then resolve it. "
             "Do not register deliverables or pre-existing files."
         )
@@ -107,13 +107,13 @@ def hook(host):
             "hookEventName": name, "additionalContext": context}}))
         return
 
-    path = record(host, session)
+    path = record(session)
     if name == "SessionEnd":
         remove_record(path)
         return
     if name != "Stop":
         return
-    if event.get("stop_hook_active") or (host == "claude" and event.get("background_tasks")):
+    if event.get("stop_hook_active"):
         print("{}")
         return
 
@@ -131,27 +131,23 @@ def hook(host):
         "after deleting it or explicitly retaining and reporting it. Do this cleanup pass "
         "once, then finish."
     )
-    if host == "claude":
-        print(json.dumps({"hookSpecificOutput": {
-            "hookEventName": "Stop", "additionalContext": reason}}))
-    else:
-        print(json.dumps({"decision": "block", "reason": reason}))
+    print(json.dumps({"decision": "block", "reason": reason}))
 
 
 def main():
     action, host, *args = sys.argv[1:]
-    if host not in ("codex", "claude"):
-        raise SystemExit("host must be codex or claude")
+    if host != "codex":
+        raise SystemExit("host must be codex")
     if action == "hook":
-        hook(host)
+        hook()
         return
     if action not in ("add", "resolve") or len(args) not in (2, 3):
-        raise SystemExit("usage: cys.py add|resolve HOST SESSION [STATE_DIR] ABSOLUTE_PATH")
+        raise SystemExit("usage: cys.py add|resolve codex SESSION [STATE_DIR] ABSOLUTE_PATH")
     session, *paths = args
     state, name = (STATE, paths[0]) if len(paths) == 1 else paths
     if not session or not os.path.isabs(state) or not os.path.isabs(name):
         raise SystemExit("session, state directory, and path must be absolute")
-    update(record(host, session, state), action, name)
+    update(record(session, state), action, name)
 
 
 if __name__ == "__main__":
