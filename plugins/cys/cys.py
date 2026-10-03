@@ -96,9 +96,9 @@ def hook(host):
             f"path with {command_for(host, session, 'add')}. "
             "Replace PATH with one shell-quoted absolute path; use that exact path when resolving. "
             "Include paths made by subagents and external model tools; share these exact commands "
-            "if they register directly. Wait for their reports before finishing. "
-            "Delete temporary "
-            "files no longer needed and run "
+            "if they register directly. Subagents should report their paths to the main agent. "
+            "The main agent handles cleanup at the end of the turn, after collecting their reports. "
+            "When the Stop hook requests cleanup, delete temporary files no longer needed and run "
             f"{command_for(host, session, 'resolve')} for each removed path. "
             "If retaining a path, report its location and reason, then resolve it. "
             "Do not register deliverables or pre-existing files."
@@ -112,6 +112,9 @@ def hook(host):
         remove_record(path)
         return
     if name != "Stop":
+        return
+    if event.get("stop_hook_active") or (host == "claude" and event.get("background_tasks")):
+        print("{}")
         return
 
     pending = pending_for_stop(path)
@@ -128,7 +131,11 @@ def hook(host):
         "after deleting it or explicitly retaining and reporting it. Do this cleanup pass "
         "once, then finish."
     )
-    print(json.dumps({"decision": "block", "reason": reason}))
+    if host == "claude":
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "Stop", "additionalContext": reason}}))
+    else:
+        print(json.dumps({"decision": "block", "reason": reason}))
 
 
 def main():

@@ -24,6 +24,8 @@ The SessionStart hook supplies exact `add` and `resolve` commands. On Windows, u
 
 The agent must preserve pre-existing, user-authored, tracked, and still-needed files. If it keeps an intermediate, it reports the path and reason.
 
+Both hosts skip subsequent Stops during the cleanup continuation. Claude also waits until no background tasks are running and supplies normal hook feedback. Codex uses its supported Stop continuation response. Subagents register and report their paths; the main agent handles cleanup.
+
 ## Check
 
 ```sh

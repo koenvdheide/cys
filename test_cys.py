@@ -32,13 +32,19 @@ class CysTests(unittest.TestCase):
         self.created = self.root / "created.txt"
         self.created.touch()
 
-    def test_new_path_during_stop_continuation_gets_prompted_once(self):
+    def test_codex_defers_new_paths_until_next_regular_stop(self):
         cys.update(self.record, "add", str(self.created))
         output = StringIO()
         event = {"session_id": "session", "hook_event_name": "Stop", "stop_hook_active": True}
         with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
             cys.hook("codex")
+        self.assertEqual(json.loads(output.getvalue()), {})
+        event["stop_hook_active"] = False
+        output = StringIO()
+        with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
+            cys.hook("codex")
         self.assertEqual(json.loads(output.getvalue())["decision"], "block")
+        self.assertIn(str(self.created), json.loads(output.getvalue())["reason"])
         self.assertEqual(cys.pending_for_stop(self.record), [])
 
     def test_duplicate_registration_does_not_rearm_prompt(self):
@@ -49,6 +55,34 @@ class CysTests(unittest.TestCase):
         cys.update(self.record, "resolve", str(self.created))
         cys.update(self.record, "add", str(self.created))
         self.assertEqual(cys.pending_for_stop(self.record), [str(self.created)])
+
+    def test_claude_stop_requests_one_cleanup_pass_as_feedback(self):
+        record = cys.record("claude", "session")
+        cys.update(record, "add", str(self.created))
+        event = {"session_id": "session", "hook_event_name": "Stop"}
+        output = StringIO()
+        with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
+            cys.hook("claude")
+        feedback = json.loads(output.getvalue())
+        self.assertNotIn("decision", feedback)
+        self.assertEqual(feedback["hookSpecificOutput"]["hookEventName"], "Stop")
+        self.assertIn(str(self.created), feedback["hookSpecificOutput"]["additionalContext"])
+        self.assertTrue(self.created.exists())
+        self.assertEqual(cys.pending_for_stop(record), [])
+
+    def test_claude_defers_cleanup_during_continuation_or_background_work(self):
+        for fields in ({"stop_hook_active": True}, {"background_tasks": [{"type": "subagent", "status": "running"}]}):
+            with self.subTest(fields=fields):
+                session = str(fields)
+                record = cys.record("claude", session)
+                cys.update(record, "add", str(self.created))
+                event = {"session_id": session, "hook_event_name": "Stop", **fields}
+                output = StringIO()
+                with patch("sys.stdin", StringIO(json.dumps(event))), redirect_stdout(output):
+                    cys.hook("claude")
+                self.assertEqual(json.loads(output.getvalue()), {})
+                self.assertEqual(cys.pending_for_stop(record), [str(self.created)])
+                cys.update(record, "resolve", str(self.created))
 
     def test_stop_handles_database_before_first_table_creation(self):
         sqlite3.connect(self.record).close()
