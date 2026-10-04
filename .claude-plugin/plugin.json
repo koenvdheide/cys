@@ -1,6 +1,6 @@
 {
   "name": "cys",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tracks the temporary files Claude creates and asks it to clean them up at the end of each turn.",
   "author": {
     "name": "Koen van der Heide",
