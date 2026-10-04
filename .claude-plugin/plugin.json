@@ -2,5 +2,8 @@
   "name": "cys",
   "version": "0.2.0",
   "description": "Ask agents to clean up their registered temporary files at Stop.",
-  "author": {"name": "koenvdheide"}
+  "author": {
+    "name": "Koen van der Heide",
+    "url": "https://github.com/koenvdheide"
+  }
 }
