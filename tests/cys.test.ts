@@ -25,11 +25,15 @@ function world(on: On, init: Partial<World> = {}): World {
   on('session.id', async () => ({ value: w.session }))
   on('session.cwd', async () => ({ value: w.cwd }))
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
-  on('fs.exists', async ($, e) => (w.existsDeny?.has(e.path) ? { deny: 'network location' } : { value: w.existing.has(e.path) }))
+  // On a POSIX host the engine resolves a Windows spelling such as C:\tmp\x
+  // against the working directory before the stub sees it (/cwd/C:\tmp\x).
+  const has = (paths: Set<string> | undefined, path: string) =>
+    [...(paths ?? [])].some(p => path === p || path.endsWith(`/${p}`))
+  on('fs.exists', async ($, e) => (has(w.existsDeny, e.path) ? { deny: 'network location' } : { value: has(w.existing, e.path) }))
   on('fs.stat', async ($, e) => {
-    if (w.existsDeny?.has(e.path)) return { deny: 'network location' }
-    if (w.existing.has(e.path)) return { value: { kind: 'file', size: 1, mtimeMs: 0, isLink: false } }
-    if (w.dangling?.has(e.path)) return { value: { kind: 'other', size: 0, mtimeMs: 0, isLink: true } }
+    if (has(w.existsDeny, e.path)) return { deny: 'network location' }
+    if (has(w.existing, e.path)) return { value: { kind: 'file', size: 1, mtimeMs: 0, isLink: false } }
+    if (has(w.dangling, e.path)) return { value: { kind: 'other', size: 0, mtimeMs: 0, isLink: true } }
     return { deny: 'ENOENT: no such file or directory' }
   })
   on('store.keys', async () => ({ value: [...w.store.keys()] }))
