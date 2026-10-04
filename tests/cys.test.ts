@@ -15,6 +15,7 @@ type World = {
   refuse?: (key: string, value: unknown) => boolean
   existsDeny?: Set<string>
   dangling?: Set<string>
+  stopResult?: Awaited<ReturnType<Engine['classic']['Stop']>>
 }
 
 // Op stubs answer { value } or { deny }; a deny rejects the module's call,
@@ -46,7 +47,7 @@ function world(on: On, init: Partial<World> = {}): World {
     w.registered.push(e)
     return { value: { tool: `mcp__cys__${e.name}` } }
   })
-  on('classic.Stop', async () => ({ additionalContext: [UPSTREAM] }))
+  on('classic.Stop', async () => w.stopResult ?? { additionalContext: [UPSTREAM] })
   on('classic.SubagentStart', async () => ({ additionalContext: [UPSTREAM] }))
   // Bottom answer for a tool.call no plugin answered, so a test against an
   // empty module fails on its assertions instead of a harness error.
@@ -193,6 +194,16 @@ test('Stop returns next(e) unchanged during a continuation or background work, t
   }
   const regular = await stop($, 'session-a')
   expect(regular.additionalContext?.[1]).toContain('C:\\tmp\\here')
+})
+
+test('Stop leaves registrations alone when another hook stops the session, then lists them', async ($, on) => {
+  const w = world(on, { existing: new Set(['C:\\tmp\\here']), stopResult: { preventContinuation: true } })
+  await register($, ['C:\\tmp\\here'])
+  expect(await stop($, 'session-a')).toEqual({ preventContinuation: true })
+  expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\here'])
+  w.stopResult = undefined
+  const later = await stop($, 'session-a')
+  expect(later.additionalContext?.[1]).toContain('C:\\tmp\\here')
 })
 
 test('registering a consumed path again lists it at the next Stop', async ($, on) => {

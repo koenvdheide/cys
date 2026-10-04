@@ -85,7 +85,7 @@ export const register: Register = on => {
 
   on('classic.Stop', async ($, e, next) => {
     const result = await next(e)
-    if (e.stop_hook_active || (e.background_tasks?.length ?? 0) > 0) return result
+    if (e.stop_hook_active || (e.background_tasks?.length ?? 0) > 0 || result.preventContinuation) return result
     const prefix = `${e.session_id}\n`
     const present: string[] = []
     for (const key of await $.store.keys()) {
