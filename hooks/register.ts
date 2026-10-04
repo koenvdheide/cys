@@ -37,6 +37,7 @@ const cleanupText =(paths: string[]) =>
 // $.fs.exists rejects network locations; registration refuses these spellings
 // so the agent gets a clear reason up front. Stop does not depend on it.
 const rejection = (path: string, isWindows: boolean) => {
+  if (/[\r\n]/.test(path)) return 'contains a line break'
   if (/^[\\/][\\/]/.test(path)) return 'network or device path'
   if (/^[A-Za-z]:(?![\\/])/.test(path)) return 'drive-relative path'
   if (isWindows ? /^[A-Za-z]:[\\/]/.test(path) : path.startsWith('/')) return undefined

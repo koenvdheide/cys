@@ -128,6 +128,14 @@ test('on POSIX, registers rooted paths and rejects network, relative and Windows
   expect(stored(w, 'session-a')).toEqual(['/tmp/a'])
 })
 
+test('a path with a line break is refused, so the cleanup list stays one path per line', async ($, on) => {
+  const w = world(on, { cwd: '/home/u' })
+  const ran = await register($, ['/tmp/job\n/tmp/notes', '/tmp/a'])
+  expect(String(ran.result)).toStartWith('not registered (contains a line break): ')
+  expect(String(ran.result)).toContain('registered: /tmp/a')
+  expect(stored(w, 'session-a')).toEqual(['/tmp/a'])
+})
+
 test('a path over 300 characters registers and is listed at the next Stop', async ($, on) => {
   const long = 'C:\\' + 'x'.repeat(300)
   world(on, { existing: new Set([long]), refuse: key => key.length > 256 })
