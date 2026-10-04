@@ -1,29 +1,31 @@
 # CYS (Clean Your Shit)
 
-CYS asks Claude Code to clean up temporary files at Stop. An agent registers the exact path of each temporary file or directory it creates. If any registered paths still exist at Stop, CYS asks the agent for one cleanup pass. CYS never deletes files itself.
+Claude Code leaves scratch files behind as it works: probe scripts, captured command output, prompts and results for external reviewers, intermediate JSON. Nothing prompts it to remove them, so they pile up in your temp directory and sometimes in your project.
 
-Subagents and external models can register their paths in the same session. Paths can be in a workspace or an operating system temporary directory.
+CYS is a Claude Code mod that keeps track of those files. Claude registers each temporary file or directory it creates, and at the end of each turn CYS hands Claude the registered paths that are still there and asks for one cleanup pass. CYS never deletes anything itself. Claude decides what to remove, and the cleanup request asks it to keep anything user-authored, tracked or still needed and to report what it kept and why.
 
 ## Install
 
-CYS runs as a Claude Code mod and needs Claude Code v2.1.287 or later. It is listed in the [agent-tools](https://github.com/koenvdheide/agent-tools) marketplace:
+CYS needs Claude Code v2.1.287 or later. It is listed in the [agent-tools](https://github.com/koenvdheide/agent-tools) marketplace:
 
 ```sh
 claude plugin marketplace add koenvdheide/agent-tools
 claude plugin install cys@agent-tools
 ```
 
-When upgrading from 0.1.0, which ran Python command hooks, remove any earlier CYS entries from `~/.claude/settings.json`. Registrations made by 0.1.0 are not carried over.
+Then run `/reload-plugins` in an open session, or restart Claude Code.
 
-## Use
+If you used CYS 0.1.0, which ran Python hooks, remove its entries from `~/.claude/settings.json`. Files registered under 0.1.0 are not carried over.
 
-The agent registers each temporary path with the `mcp__cys__register` tool, using the machine's native absolute form (`C:\...` on Windows, `/...` elsewhere). Subagents that have the tool use it; the others list their paths in their final report, and the main agent registers them. Registrations are kept in the plugin's store, so a session resumed with `claude --resume` still finds them; `--fork-session` and `/branch` start with none.
+## How it works
 
-At a Stop that is neither a cleanup continuation nor waiting on background tasks, CYS lists, once, every registered path that is still on disk or whose existence it could not check, and forgets every registration of that session. Registering a path again re-arms it.
+- CYS gives Claude a tool, `register`, which it calls with the absolute path of each temporary file or directory right after creating it. Paths must be in the machine's native form (`C:\...` on Windows); a Git Bash path such as `/c/Users/...` is refused with a message naming the native form.
+- Subagents that have the tool register their own files. Subagents without it list their files in their final report, and the main agent registers them.
+- When a turn ends, CYS gives Claude the session's registered paths that still exist (and any it could not check) as a list to review. Each registration is listed once; registering the same path again puts it back on the list.
+- CYS waits while a cleanup pass or a background task is still running, and stays out of the way if another hook has stopped the session.
+- Registrations are stored per session, so they survive `claude --resume`. A forked session (`--fork-session` or `/branch`) starts with none.
 
-The agent must preserve pre-existing, user-authored, tracked, and still-needed files. If it keeps an intermediate, it reports the path and reason.
-
-## Check
+## Development
 
 ```sh
 claude plugin test .
