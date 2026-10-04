@@ -28,7 +28,7 @@ const hash = (text: string) => {
 }
 
 const cleanupText =(paths: string[]) =>
-  'CYS has registered temporary paths still present:\n' +
+  'CYS has registered temporary paths to review:\n' +
   paths.join('\n') +
   '\nReview ownership and whether each is still needed. Delete only task-created disposable paths; ' +
   'preserve user, pre-existing, tracked, and needed files. Report any path you keep and why. ' +

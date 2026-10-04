@@ -152,6 +152,7 @@ test('Stop lists existing paths of its own session once, keeps upstream context 
   const first = await stop($, 'session-a')
   expect(first.additionalContext?.length).toBe(2)
   expect(first.additionalContext?.[0]).toBe(UPSTREAM)
+  expect(first.additionalContext?.[1]).toStartWith('CYS has registered temporary paths to review:\n')
   expect(first.additionalContext?.[1]).toContain('C:\\tmp\\here')
   expect(first.additionalContext?.[1]).not.toContain('C:\\tmp\\gone')
   expect(first.additionalContext?.[1]).not.toContain('C:\\tmp\\other')
