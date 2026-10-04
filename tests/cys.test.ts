@@ -12,7 +12,7 @@ type World = {
   existing: Set<string>
   store: Map<string, unknown>
   registered: unknown[]
-  refuse?: (key: string) => boolean
+  refuse?: (key: string, value: unknown) => boolean
   existsDeny?: Set<string>
   dangling?: Set<string>
 }
@@ -32,12 +32,13 @@ function world(on: On, init: Partial<World> = {}): World {
     return { deny: 'ENOENT: no such file or directory' }
   })
   on('store.keys', async () => ({ value: [...w.store.keys()] }))
+  on('store.get', async ($, e) => ({ value: w.store.get(e.key) }))
   on('store.delete', async ($, e) => {
     w.store.delete(e.key)
     return { value: undefined }
   })
   on('store.set', async ($, e) => {
-    if (w.refuse?.(e.key)) return { deny: 'store refused the key' }
+    if (w.refuse?.(e.key, e.value)) return { deny: 'store refused the key' }
     w.store.set(e.key, e.value)
     return { value: undefined }
   })
@@ -52,6 +53,9 @@ function world(on: On, init: Partial<World> = {}): World {
   on('tool.call', async () => ({ result: '' }))
   return w
 }
+
+const stored = (w: World, session: string) =>
+  [...w.store].filter(([key]) => key.startsWith(`${session}\n`)).map(([, value]) => value).sort()
 
 let calls = 0
 const register = ($: Engine, paths: unknown[]) =>
@@ -96,14 +100,14 @@ test('on Windows, registers drive paths and rejects each other form with its rea
     `${NETWORK}: /\\s\\x`,
     `${NOT_WINDOWS}: /c/Users/x`,
   ])
-  expect([...w.store.keys()]).toEqual(['session-a\nC:\\tmp\\a.txt', 'session-a\nC:/tmp/b.txt'])
+  expect(stored(w, 'session-a')).toEqual(['C:/tmp/b.txt', 'C:\\tmp\\a.txt'])
 })
 
 test('a UNC working directory still counts as Windows', async ($, on) => {
   const w = world(on, { cwd: '\\\\server\\share\\repo' })
   const ran = await register($, ['C:\\tmp\\a.txt', '/c/Users/x'])
   expect(String(ran.result).split('\n')).toEqual(['registered: C:\\tmp\\a.txt', `${NOT_WINDOWS}: /c/Users/x`])
-  expect([...w.store.keys()]).toEqual(['session-a\nC:\\tmp\\a.txt'])
+  expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\a.txt'])
 })
 
 test('on POSIX, registers rooted paths and rejects network, relative and Windows forms', async ($, on) => {
@@ -116,23 +120,33 @@ test('on POSIX, registers rooted paths and rejects network, relative and Windows
     `${NOT_ABSOLUTE}: C:\\x`,
     `${DRIVE_RELATIVE}: C:x`,
   ])
-  expect([...w.store.keys()]).toEqual(['session-a\n/tmp/a'])
+  expect(stored(w, 'session-a')).toEqual(['/tmp/a'])
+})
+
+test('a path over 300 characters registers and is listed at the next Stop', async ($, on) => {
+  const long = 'C:\\' + 'x'.repeat(300)
+  world(on, { existing: new Set([long]), refuse: key => key.length > 256 })
+  const ran = await register($, [long])
+  expect(ran.result).toBe(`registered: ${long}`)
+  const result = await stop($, 'session-a')
+  expect(result.additionalContext?.[1]).toContain(long)
 })
 
 test('a refused store write is reported and the other paths still register', async ($, on) => {
-  const long = 'C:\\' + 'x'.repeat(300)
-  const w = world(on, { refuse: key => key.length > 256 })
-  const ran = await register($, [long, 'C:\\tmp\\b.txt'])
+  const w = world(on, { refuse: (_key, value) => String(value).includes('refuse-me') })
+  const ran = await register($, ['C:\\tmp\\refuse-me', 'C:\\tmp\\b.txt'])
   expect(String(ran.result).split('\n')).toEqual([
-    `not registered (store refused it): ${long}`,
+    'not registered (store refused it): C:\\tmp\\refuse-me',
     'registered: C:\\tmp\\b.txt',
   ])
-  expect([...w.store.keys()]).toEqual(['session-a\nC:\\tmp\\b.txt'])
+  expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\b.txt'])
 })
 
 test('Stop lists existing paths of its own session once, keeps upstream context and consumes its keys', async ($, on) => {
   const w = world(on, { existing: new Set(['C:\\tmp\\here']) })
-  w.store.set('session-b\nC:\\tmp\\other', true)
+  w.session = 'session-b'
+  await register($, ['C:\\tmp\\other'])
+  w.session = 'session-a'
   await register($, ['C:\\tmp\\here', 'C:\\tmp\\gone'])
   const first = await stop($, 'session-a')
   expect(first.additionalContext?.length).toBe(2)
@@ -140,7 +154,8 @@ test('Stop lists existing paths of its own session once, keeps upstream context 
   expect(first.additionalContext?.[1]).toContain('C:\\tmp\\here')
   expect(first.additionalContext?.[1]).not.toContain('C:\\tmp\\gone')
   expect(first.additionalContext?.[1]).not.toContain('C:\\tmp\\other')
-  expect([...w.store.keys()]).toEqual(['session-b\nC:\\tmp\\other'])
+  expect(stored(w, 'session-b')).toEqual(['C:\\tmp\\other'])
+  expect(w.store.size).toBe(1)
   const second = await stop($, 'session-a')
   expect(second.additionalContext).toEqual([UPSTREAM])
 })
@@ -174,7 +189,7 @@ test('Stop returns next(e) unchanged during a continuation or background work, t
   for (const fields of [{ stop_hook_active: true }, { background_tasks: [{ id: 'b1', type: 'subagent', status: 'running', description: 'review' }] }]) {
     const waited = await stop($, 'session-a', fields)
     expect(waited.additionalContext).toEqual([UPSTREAM])
-    expect([...w.store.keys()]).toEqual(['session-a\nC:\\tmp\\here'])
+    expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\here'])
   }
   const regular = await stop($, 'session-a')
   expect(regular.additionalContext?.[1]).toContain('C:\\tmp\\here')
@@ -196,12 +211,12 @@ test('after the session id changes without session.start, registrations go under
   await $.session.start({ cwd: CWD, surface: null, isInteractive: false })
   w.session = 'session-c'
   await register($, ['C:\\tmp\\after-clear'])
-  expect([...w.store.keys()]).toEqual(['session-c\nC:\\tmp\\after-clear'])
+  expect(stored(w, 'session-c')).toEqual(['C:\\tmp\\after-clear'])
 })
 
 test('stored entries are listed by their own session on resume and not by a fork', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\left']) })
-  w.store.set('session-a\nC:\\tmp\\left', true)
+  world(on, { existing: new Set(['C:\\tmp\\left']) })
+  await register($, ['C:\\tmp\\left'])
   const fork = await stop($, 'session-fork')
   expect(fork.additionalContext).toEqual([UPSTREAM])
   const resumed = await stop($, 'session-a')

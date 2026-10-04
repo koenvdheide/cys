@@ -12,7 +12,22 @@ const SUBAGENT_CONTEXT =
   'CYS: if you have the mcp__cys__register tool, register each temporary file or directory you create with it. ' +
   'Otherwise list their absolute paths in your final report, so the main agent registers them.'
 
-const cleanupText = (paths: string[]) =>
+// The store refuses keys over 256 characters, so keys carry a hash of the
+// path and the value carries the path itself.
+const hash = (text: string) => {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    h1 = Math.imul(h1 ^ c, 2654435761)
+    h2 = Math.imul(h2 ^ c, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16)
+}
+
+const cleanupText =(paths: string[]) =>
   'CYS has registered temporary paths still present:\n' +
   paths.join('\n') +
   '\nReview ownership and whether each is still needed. Delete only task-created disposable paths; ' +
@@ -59,7 +74,7 @@ export const register: Register = on => {
         continue
       }
       try {
-        await $.store.set(`${session}\n${path}`, true)
+        await $.store.set(`${session}\n${hash(path)}`, path)
         lines.push(`registered: ${path}`)
       } catch {
         lines.push(`not registered (store refused it): ${path}`)
@@ -75,8 +90,9 @@ export const register: Register = on => {
     const present: string[] = []
     for (const key of await $.store.keys()) {
       if (!key.startsWith(prefix)) continue
-      const path = key.slice(prefix.length)
+      const path = await $.store.get(key)
       await $.store.delete(key)
+      if (typeof path !== 'string') continue
       const isPresent = await $.fs.stat(path).then(
         () => true,
         () => $.fs.exists(path).catch(() => true),
