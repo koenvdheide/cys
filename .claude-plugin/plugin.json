@@ -2,6 +2,7 @@
   "name": "cys",
   "version": "0.2.2",
   "description": "Tracks the temporary files Claude creates and asks it to clean them up at the end of each turn.",
+  "keywords": ["cleanup", "temporary-files", "scratch-files", "housekeeping", "mod"],
   "author": {
     "name": "Koen van der Heide",
     "url": "https://github.com/koenvdheide"
