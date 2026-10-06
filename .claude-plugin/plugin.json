@@ -1,9 +1,13 @@
 {
   "name": "cys",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Tracks the temporary files Claude creates and asks it to clean them up at the end of each turn.",
   "author": {
     "name": "Koen van der Heide",
     "url": "https://github.com/koenvdheide"
-  }
+  },
+  "homepage": "https://github.com/koenvdheide/cys",
+  "repository": "https://github.com/koenvdheide/cys",
+  "supportUrl": "https://github.com/koenvdheide/cys/issues",
+  "privacyPolicyUrl": "https://github.com/koenvdheide/cys/blob/main/PRIVACY.md"
 }
