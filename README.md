@@ -1,6 +1,6 @@
 # CYS
 
-Claude Code leaves scratch files behind as it works: probe scripts, captured output, intermediate data. CYS gives Claude a `register` tool for those files, and answers calls to that tool itself; it intercepts no other tool. At the end of each turn it lists the registered files that still exist and asks Claude to clean them up. CYS never deletes anything itself.
+Claude Code leaves scratch files all over the place as it works, e.g. probe scripts, captured output, intermediate data. This can add up to gigabytes of temp files and clutters your project directories. CYS gives Claude a `register` tool for those files At the end of each turn it lists the registered files that still exist and asks Claude to clean them up. CYS never deletes anything itself, the Claude session judges which files are safe to be deleted.
 
 Subagents register their own files or report them to the main agent. Registrations stay in the plugin's own store, and CYS makes no network calls; see [PRIVACY.md](PRIVACY.md).
 
