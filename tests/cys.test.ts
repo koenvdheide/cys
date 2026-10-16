@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const TOOL = 'mcp__cys__register'
-const CWD = 'C:\\work'
+const CWD = '/work'
 const UPSTREAM = 'context from another hook'
 
 type World = {
@@ -27,8 +27,9 @@ function world(on: On, init: Partial<World> = {}): World {
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   // On a POSIX host the engine resolves a Windows spelling such as C:\tmp\x
   // against the working directory before the stub sees it (/cwd/C:\tmp\x).
+  const portable = (path: string) => path.replaceAll('\\', '/').replace(/^[A-Za-z]:/, '')
   const has = (paths: Set<string> | undefined, path: string) =>
-    [...(paths ?? [])].some(p => path === p || path.endsWith(`/${p}`))
+    [...(paths ?? [])].some(p => path === p || path.endsWith(`/${p}`) || portable(path) === portable(p))
   on('fs.exists', async ($, e) => (has(w.existsDeny, e.path) ? { deny: 'network location' } : { value: has(w.existing, e.path) }))
   on('fs.stat', async ($, e) => {
     if (has(w.existsDeny, e.path)) return { deny: 'network location' }
@@ -90,7 +91,7 @@ test('session.start registers the tool with a required non-empty paths array', a
 })
 
 test('on Windows, registers drive paths and rejects each other form with its reason', async ($, on) => {
-  const w = world(on)
+  const w = world(on, { cwd: 'C:\\work' })
   const ran = await register($, [
     'C:\\tmp\\a.txt', 'C:/tmp/b.txt', 'rel\\a.txt', 'C:a.txt', '\\\\s\\x', '//s/x', '\\/s/x', '/\\s\\x', '/c/Users/x',
   ])
@@ -137,7 +138,7 @@ test('a path with a line break is refused, so the cleanup list stays one path pe
 })
 
 test('a path over 300 characters registers and is listed at the next Stop', async ($, on) => {
-  const long = 'C:\\' + 'x'.repeat(300)
+  const long = '/' + 'x'.repeat(300)
   world(on, { existing: new Set([long]), refuse: key => key.length > 256 })
   const ran = await register($, [long])
   expect(ran.result).toBe(`registered: ${long}`)
@@ -147,104 +148,104 @@ test('a path over 300 characters registers and is listed at the next Stop', asyn
 
 test('a refused store write is reported and the other paths still register', async ($, on) => {
   const w = world(on, { refuse: (_key, value) => String(value).includes('refuse-me') })
-  const ran = await register($, ['C:\\tmp\\refuse-me', 'C:\\tmp\\b.txt'])
+  const ran = await register($, ['/tmp/refuse-me', '/tmp/b.txt'])
   expect(String(ran.result).split('\n')).toEqual([
-    'not registered (store refused it): C:\\tmp\\refuse-me',
-    'registered: C:\\tmp\\b.txt',
+    'not registered (store refused it): /tmp/refuse-me',
+    'registered: /tmp/b.txt',
   ])
-  expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\b.txt'])
+  expect(stored(w, 'session-a')).toEqual(['/tmp/b.txt'])
 })
 
 test('Stop lists existing paths of its own session once, keeps upstream context and consumes its keys', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\here']) })
+  const w = world(on, { existing: new Set(['/tmp/here']) })
   w.session = 'session-b'
-  await register($, ['C:\\tmp\\other'])
+  await register($, ['/tmp/other'])
   w.session = 'session-a'
-  await register($, ['C:\\tmp\\here', 'C:\\tmp\\gone'])
+  await register($, ['/tmp/here', '/tmp/gone'])
   const first = await stop($, 'session-a')
   expect(first.additionalContext?.length).toBe(2)
   expect(first.additionalContext?.[0]).toBe(UPSTREAM)
   expect(first.additionalContext?.[1]).toStartWith('CYS has registered temporary paths to review:\n')
-  expect(first.additionalContext?.[1]).toContain('C:\\tmp\\here')
-  expect(first.additionalContext?.[1]).not.toContain('C:\\tmp\\gone')
-  expect(first.additionalContext?.[1]).not.toContain('C:\\tmp\\other')
-  expect(stored(w, 'session-b')).toEqual(['C:\\tmp\\other'])
+  expect(first.additionalContext?.[1]).toContain('/tmp/here')
+  expect(first.additionalContext?.[1]).not.toContain('/tmp/gone')
+  expect(first.additionalContext?.[1]).not.toContain('/tmp/other')
+  expect(stored(w, 'session-b')).toEqual(['/tmp/other'])
   expect(w.store.size).toBe(1)
   const second = await stop($, 'session-a')
   expect(second.additionalContext).toEqual([UPSTREAM])
 })
 
 test('Stop lists a path whose existence check is refused and still lists the others', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\here']), existsDeny: new Set(['Z:\\share\\x']) })
-  await register($, ['C:\\tmp\\here', 'Z:\\share\\x'])
+  const w = world(on, { existing: new Set(['/tmp/here']), existsDeny: new Set(['/restricted/x']) })
+  await register($, ['/tmp/here', '/restricted/x'])
   const result = await stop($, 'session-a')
   expect(result.additionalContext?.length).toBe(2)
   expect(result.additionalContext?.[0]).toBe(UPSTREAM)
-  expect(result.additionalContext?.[1]).toContain('C:\\tmp\\here')
-  expect(result.additionalContext?.[1]).toContain('Z:\\share\\x')
+  expect(result.additionalContext?.[1]).toContain('/tmp/here')
+  expect(result.additionalContext?.[1]).toContain('/restricted/x')
   expect(w.store.size).toBe(0)
 })
 
 test('Stop lists a dangling symlink, as lexists did', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\here']), dangling: new Set(['C:\\tmp\\link']) })
-  await register($, ['C:\\tmp\\here', 'C:\\tmp\\link', 'C:\\tmp\\gone'])
+  const w = world(on, { existing: new Set(['/tmp/here']), dangling: new Set(['/tmp/link']) })
+  await register($, ['/tmp/here', '/tmp/link', '/tmp/gone'])
   const result = await stop($, 'session-a')
   expect(result.additionalContext?.length).toBe(2)
   expect(result.additionalContext?.[0]).toBe(UPSTREAM)
-  expect(result.additionalContext?.[1]).toContain('C:\\tmp\\here')
-  expect(result.additionalContext?.[1]).toContain('C:\\tmp\\link')
-  expect(result.additionalContext?.[1]).not.toContain('C:\\tmp\\gone')
+  expect(result.additionalContext?.[1]).toContain('/tmp/here')
+  expect(result.additionalContext?.[1]).toContain('/tmp/link')
+  expect(result.additionalContext?.[1]).not.toContain('/tmp/gone')
   expect(w.store.size).toBe(0)
 })
 
 test('Stop returns next(e) unchanged during a continuation or background work, then lists at a regular Stop', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\here']) })
-  await register($, ['C:\\tmp\\here'])
+  const w = world(on, { existing: new Set(['/tmp/here']) })
+  await register($, ['/tmp/here'])
   for (const fields of [{ stop_hook_active: true }, { background_tasks: [{ id: 'b1', type: 'subagent', status: 'running', description: 'review' }] }]) {
     const waited = await stop($, 'session-a', fields)
     expect(waited.additionalContext).toEqual([UPSTREAM])
-    expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\here'])
+    expect(stored(w, 'session-a')).toEqual(['/tmp/here'])
   }
   const regular = await stop($, 'session-a')
-  expect(regular.additionalContext?.[1]).toContain('C:\\tmp\\here')
+  expect(regular.additionalContext?.[1]).toContain('/tmp/here')
 })
 
 test('Stop leaves registrations alone when another hook stops the session, then lists them', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\here']), stopResult: { preventContinuation: true } })
-  await register($, ['C:\\tmp\\here'])
+  const w = world(on, { existing: new Set(['/tmp/here']), stopResult: { preventContinuation: true } })
+  await register($, ['/tmp/here'])
   expect(await stop($, 'session-a')).toEqual({ preventContinuation: true })
-  expect(stored(w, 'session-a')).toEqual(['C:\\tmp\\here'])
+  expect(stored(w, 'session-a')).toEqual(['/tmp/here'])
   w.stopResult = undefined
   const later = await stop($, 'session-a')
-  expect(later.additionalContext?.[1]).toContain('C:\\tmp\\here')
+  expect(later.additionalContext?.[1]).toContain('/tmp/here')
 })
 
 test('registering a consumed path again lists it at the next Stop', async ($, on) => {
-  const w = world(on, { existing: new Set(['C:\\tmp\\here']) })
-  await register($, ['C:\\tmp\\here'])
+  const w = world(on, { existing: new Set(['/tmp/here']) })
+  await register($, ['/tmp/here'])
   const first = await stop($, 'session-a')
-  expect(first.additionalContext?.[1]).toContain('C:\\tmp\\here')
+  expect(first.additionalContext?.[1]).toContain('/tmp/here')
   expect(w.store.size).toBe(0)
-  await register($, ['C:\\tmp\\here'])
+  await register($, ['/tmp/here'])
   const again = await stop($, 'session-a')
-  expect(again.additionalContext?.[1]).toContain('C:\\tmp\\here')
+  expect(again.additionalContext?.[1]).toContain('/tmp/here')
 })
 
 test('after the session id changes without session.start, registrations go under the new id', async ($, on) => {
   const w = world(on)
   await $.session.start({ cwd: CWD, surface: null, isInteractive: false })
   w.session = 'session-c'
-  await register($, ['C:\\tmp\\after-clear'])
-  expect(stored(w, 'session-c')).toEqual(['C:\\tmp\\after-clear'])
+  await register($, ['/tmp/after-clear'])
+  expect(stored(w, 'session-c')).toEqual(['/tmp/after-clear'])
 })
 
 test('stored entries are listed by their own session on resume and not by a fork', async ($, on) => {
-  world(on, { existing: new Set(['C:\\tmp\\left']) })
-  await register($, ['C:\\tmp\\left'])
+  world(on, { existing: new Set(['/tmp/left']) })
+  await register($, ['/tmp/left'])
   const fork = await stop($, 'session-fork')
   expect(fork.additionalContext).toEqual([UPSTREAM])
   const resumed = await stop($, 'session-a')
-  expect(resumed.additionalContext?.[1]).toContain('C:\\tmp\\left')
+  expect(resumed.additionalContext?.[1]).toContain('/tmp/left')
 })
 
 test('SubagentStart keeps upstream context and adds the CYS instruction', async ($, on) => {
